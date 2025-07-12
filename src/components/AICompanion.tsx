@@ -4,6 +4,7 @@ import { api } from "../../convex/_generated/api";
 import { toast } from "sonner";
 import { Language, AppTexts } from "../App";
 import { useSafetyDetection } from "../utils/safetyDetection";
+import SafetyModal from "./SafetyModal";
 
 interface AICompanionProps {
   theme: "light" | "dark";
@@ -29,6 +30,8 @@ export function AICompanion({ theme, language, texts }: AICompanionProps) {
   const [companionName, setCompanionName] = useState("");
   const [selectedAvatar, setSelectedAvatar] = useState(COMPANION_AVATARS[0]);
   const [selectedPersonality, setSelectedPersonality] = useState(COMPANION_PERSONALITIES[0].id);
+  const [safetyModalOpen, setSafetyModalOpen] = useState(false);
+  const [flaggedWords, setFlaggedWords] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const companion = useQuery(api.companions.getCompanion);
@@ -53,9 +56,10 @@ export function AICompanion({ theme, language, texts }: AICompanionProps) {
   // Monitor messages for safety words
   useEffect(() => {
     if (message && detectSafetyWords(message)) {
-      triggerSafetyModal();
+      setFlaggedWords([message]);
+      setSafetyModalOpen(true);
     }
-  }, [message, detectSafetyWords, triggerSafetyModal]);
+  }, [message, detectSafetyWords]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,7 +69,8 @@ export function AICompanion({ theme, language, texts }: AICompanionProps) {
     
     // Check for safety words before sending
     if (detectSafetyWords(userMessage)) {
-      triggerSafetyModal();
+      setFlaggedWords([userMessage]);
+      setSafetyModalOpen(true);
       setMessage("");
       return;
     }
@@ -227,6 +232,12 @@ export function AICompanion({ theme, language, texts }: AICompanionProps) {
 
   return (
     <div className="max-w-5xl mx-auto h-[calc(100vh-200px)] flex flex-col">
+      <SafetyModal
+        open={safetyModalOpen}
+        onClose={() => setSafetyModalOpen(false)}
+        onCall={() => {}}
+        flaggedWords={flaggedWords}
+      />
       {/* Header */}
       <div className={`p-6 rounded-t-3xl border-b ${
         theme === "dark" ? "border-purple-500/20 bg-slate-800/50" : "border-rose-200/50 bg-white/70"

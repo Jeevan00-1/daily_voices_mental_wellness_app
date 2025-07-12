@@ -3,12 +3,17 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { toast } from "sonner";
 import { Language, AppTexts } from "../App";
-import { useSafetyDetection } from "../utils/safetyDetection";
+import { useSafetyTrigger } from "../utils/useSafetyTrigger";
+import SafetyModal from "./SafetyModal";
+import { useSession } from "@convex-dev/auth/react";
+import { useRef } from "react";
+import { Id } from "../../convex/_generated/dataModel";
 
 interface JournalProps {
   theme: "light" | "dark";
   language: Language;
   texts: AppTexts;
+  userId: string;
 }
 
 const MOODS = [
@@ -86,7 +91,7 @@ const JOURNAL_TEXTS = {
   }
 };
 
-export function Journal({ theme, language, texts }: JournalProps) {
+export function Journal({ theme, language, texts, userId }: JournalProps) {
   const [isWriting, setIsWriting] = useState(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -98,23 +103,60 @@ export function Journal({ theme, language, texts }: JournalProps) {
   const entries = useQuery(api.journal.getEntries, { limit: 10 });
   const moodStats = useQuery(api.journal.getMoodStats, { days: 30 });
   const createEntry = useMutation(api.journal.createEntry);
+  const flagEntryMutation = useMutation(api.flags.flagEntry);
+  const markDismissed = useMutation(api.flags.markDismissed);
+  const lastFlagId = useRef<Id<'flaggedEntries'> | null>(null);
+  const { flaggedWords, modalOpen, setModalOpen, flagEntry } = useSafetyTrigger();
 
-  const { detectSafetyWords, triggerSafetyModal } = useSafetyDetection(language);
-  const journalTexts = JOURNAL_TEXTS[language];
-
-  // Monitor content for safety words
+  // Monitor content and title for safety words
   useEffect(() => {
-    if (content && detectSafetyWords(content)) {
-      triggerSafetyModal();
+    if (content) {
+      const found = flagEntry(content);
+      if (found.length > 0 && userId) {
+        flagEntryMutation({
+          userId,
+          entryId: "journal:" + Date.now(),
+          matchedKeywords: found,
+        }).then(flagId => {
+          lastFlagId.current = flagId;
+        });
+      }
     }
-  }, [content, detectSafetyWords, triggerSafetyModal]);
-
-  // Monitor title for safety words
+  }, [content]);
   useEffect(() => {
-    if (title && detectSafetyWords(title)) {
-      triggerSafetyModal();
+    if (title) {
+      const found = flagEntry(title);
+      if (found.length > 0 && userId) {
+        flagEntryMutation({
+          userId,
+          entryId: "journal:" + Date.now(),
+          matchedKeywords: found,
+        }).then(flagId => {
+          lastFlagId.current = flagId;
+        });
+      }
     }
-  }, [title, detectSafetyWords, triggerSafetyModal]);
+  }, [title]);
+
+  if (entries === undefined || moodStats === undefined) {
+    return <div>Loading...</div>;
+  }
+  if (entries === null || moodStats === null) {
+    return <div>Error loading journal data.</div>;
+  }
+
+  const handleCall = () => {
+    // Call Twilio backend (replace with your prevention number)
+    // Example: "+18002738255"
+    fetch("/api/call", { method: "POST" });
+  };
+
+  const handleDismiss = () => {
+    setModalOpen(false);
+    if (lastFlagId.current) {
+      markDismissed({ flagId: lastFlagId.current as Id<'flaggedEntries'> });
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,8 +166,8 @@ export function Journal({ theme, language, texts }: JournalProps) {
     }
 
     // Check for safety words before saving
-    if (detectSafetyWords(content) || detectSafetyWords(title)) {
-      triggerSafetyModal();
+    if (flaggedWords.length > 0) {
+      setModalOpen(true);
       return;
     }
 
@@ -178,151 +220,160 @@ export function Journal({ theme, language, texts }: JournalProps) {
     });
   };
 
+  const journalTexts = JOURNAL_TEXTS[language];
   if (isWriting) {
     return (
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-              {journalTexts.newEntryTitle}
-            </h1>
-            <p className="text-gray-500 mt-2">{journalTexts.newEntrySubtitle}</p>
+      <>
+        <SafetyModal
+          open={modalOpen}
+          onClose={handleDismiss}
+          onCall={handleCall}
+          flaggedWords={flaggedWords}
+        />
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                {journalTexts.newEntryTitle}
+              </h1>
+              <p className="text-gray-500 mt-2">{journalTexts.newEntrySubtitle}</p>
+            </div>
+            <button
+              onClick={() => setIsWriting(false)}
+              className={`px-6 py-3 rounded-2xl font-semibold transition-all ${
+                theme === "dark"
+                  ? "bg-slate-700 hover:bg-slate-600 text-gray-300"
+                  : "bg-gray-200 hover:bg-gray-300 text-gray-700"
+              }`}
+            >
+              {journalTexts.cancel}
+            </button>
           </div>
-          <button
-            onClick={() => setIsWriting(false)}
-            className={`px-6 py-3 rounded-2xl font-semibold transition-all ${
-              theme === "dark"
-                ? "bg-slate-700 hover:bg-slate-600 text-gray-300"
-                : "bg-gray-200 hover:bg-gray-300 text-gray-700"
-            }`}
-          >
-            {journalTexts.cancel}
-          </button>
-        </div>
 
-        <div className={`p-8 rounded-3xl shadow-xl backdrop-blur-xl border ${
-          theme === "dark" 
-            ? "bg-slate-800/50 border-purple-500/20" 
-            : "bg-white/70 border-rose-200/50"
-        }`}>
-          <form onSubmit={handleSubmit} className="space-y-8">
-            <div>
-              <label className="block text-lg font-semibold mb-3">{journalTexts.titleLabel}</label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder={journalTexts.titlePlaceholder}
-                className={`w-full px-6 py-4 rounded-2xl border-2 transition-all text-lg ${
-                  theme === "dark"
-                    ? "bg-slate-700/50 border-slate-600 text-white placeholder-gray-400 focus:border-purple-400"
-                    : "bg-white/80 border-gray-300 text-gray-900 placeholder-gray-500 focus:border-rose-400"
-                } focus:ring-4 focus:ring-purple-500/20 outline-none`}
-              />
-            </div>
-
-            <div>
-              <label className="block text-lg font-semibold mb-4">{journalTexts.moodLabel}</label>
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-4">
-                {MOODS.map((mood) => (
-                  <button
-                    key={mood.id}
-                    type="button"
-                    onClick={() => setSelectedMood(mood)}
-                    className={`p-4 rounded-2xl text-center transition-all transform hover:scale-105 ${
-                      selectedMood?.id === mood.id
-                        ? `bg-gradient-to-r ${mood.color} text-white shadow-lg scale-105`
-                        : theme === "dark"
-                        ? "bg-slate-700/50 hover:bg-slate-600/50 text-gray-300"
-                        : "bg-gray-100/50 hover:bg-gray-200/50 text-gray-700"
-                    }`}
-                  >
-                    <div className="text-3xl mb-2">{mood.emoji}</div>
-                    <div className="text-sm font-medium">{mood.label[language]}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-lg font-semibold mb-3">{journalTexts.contentLabel}</label>
-              <textarea
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder={journalTexts.contentPlaceholder}
-                rows={10}
-                className={`w-full px-6 py-4 rounded-2xl border-2 transition-all resize-none text-lg ${
-                  theme === "dark"
-                    ? "bg-slate-700/50 border-slate-600 text-white placeholder-gray-400 focus:border-purple-400"
-                    : "bg-white/80 border-gray-300 text-gray-900 placeholder-gray-500 focus:border-rose-400"
-                } focus:ring-4 focus:ring-purple-500/20 outline-none`}
-              />
-            </div>
-
-            <div>
-              <label className="block text-lg font-semibold mb-3">{journalTexts.tagsLabel}</label>
-              <div className="flex flex-wrap gap-3 mb-4">
-                {tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center px-4 py-2 rounded-full text-sm bg-gradient-to-r from-blue-500 to-purple-500 text-white"
-                  >
-                    #{tag}
-                    <button
-                      type="button"
-                      onClick={() => removeTag(tag)}
-                      className="ml-2 text-white/80 hover:text-white"
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <div className="flex gap-3">
+          <div className={`p-8 rounded-3xl shadow-xl backdrop-blur-xl border ${
+            theme === "dark" 
+              ? "bg-slate-800/50 border-purple-500/20" 
+              : "bg-white/70 border-rose-200/50"
+          }`}>
+            <form onSubmit={handleSubmit} className="space-y-8">
+              <div>
+                <label className="block text-lg font-semibold mb-3">{journalTexts.titleLabel}</label>
                 <input
                   type="text"
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), addTag())}
-                  placeholder={journalTexts.tagPlaceholder}
-                  className={`flex-1 px-4 py-3 rounded-xl border text-sm ${
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder={journalTexts.titlePlaceholder}
+                  className={`w-full px-6 py-4 rounded-2xl border-2 transition-all text-lg ${
                     theme === "dark"
-                      ? "bg-slate-700/50 border-slate-600 text-white placeholder-gray-400"
-                      : "bg-white/80 border-gray-300 text-gray-900 placeholder-gray-500"
-                  } focus:border-purple-400 outline-none`}
+                      ? "bg-slate-700/50 border-slate-600 text-white placeholder-gray-400 focus:border-purple-400"
+                      : "bg-white/80 border-gray-300 text-gray-900 placeholder-gray-500 focus:border-rose-400"
+                  } focus:ring-4 focus:ring-purple-500/20 outline-none`}
                 />
-                <button
-                  type="button"
-                  onClick={addTag}
-                  className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl hover:from-blue-600 hover:to-purple-600 transition-all font-semibold"
-                >
-                  {journalTexts.addTag}
-                </button>
               </div>
-            </div>
 
-            <div className="flex items-center space-x-3">
-              <input
-                type="checkbox"
-                id="private"
-                checked={isPrivate}
-                onChange={(e) => setIsPrivate(e.target.checked)}
-                className="w-5 h-5 text-purple-600 rounded focus:ring-purple-500"
-              />
-              <label htmlFor="private" className="text-lg font-medium">
-                🔒 {journalTexts.privateLabel}
-              </label>
-            </div>
+              <div>
+                <label className="block text-lg font-semibold mb-4">{journalTexts.moodLabel}</label>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-4">
+                  {MOODS.map((mood) => (
+                    <button
+                      key={mood.id}
+                      type="button"
+                      onClick={() => setSelectedMood(mood)}
+                      className={`p-4 rounded-2xl text-center transition-all transform hover:scale-105 ${
+                        selectedMood?.id === mood.id
+                          ? `bg-gradient-to-r ${mood.color} text-white shadow-lg scale-105`
+                          : theme === "dark"
+                          ? "bg-slate-700/50 hover:bg-slate-600/50 text-gray-300"
+                          : "bg-gray-100/50 hover:bg-gray-200/50 text-gray-700"
+                      }`}
+                    >
+                      <div className="text-3xl mb-2">{mood.emoji}</div>
+                      <div className="text-sm font-medium">{mood.label[language]}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-            <button
-              type="submit"
-              className="w-full py-4 bg-gradient-to-r from-purple-500 via-pink-500 to-rose-500 text-white font-bold rounded-2xl hover:from-purple-600 hover:via-pink-600 hover:to-rose-600 transition-all transform hover:scale-105 text-lg shadow-lg"
-            >
-              ✨ {journalTexts.saveEntry}
-            </button>
-          </form>
+              <div>
+                <label className="block text-lg font-semibold mb-3">{journalTexts.contentLabel}</label>
+                <textarea
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  placeholder={journalTexts.contentPlaceholder}
+                  rows={10}
+                  className={`w-full px-6 py-4 rounded-2xl border-2 transition-all resize-none text-lg ${
+                    theme === "dark"
+                      ? "bg-slate-700/50 border-slate-600 text-white placeholder-gray-400 focus:border-purple-400"
+                      : "bg-white/80 border-gray-300 text-gray-900 placeholder-gray-500 focus:border-rose-400"
+                  } focus:ring-4 focus:ring-purple-500/20 outline-none`}
+                />
+              </div>
+
+              <div>
+                <label className="block text-lg font-semibold mb-3">{journalTexts.tagsLabel}</label>
+                <div className="flex flex-wrap gap-3 mb-4">
+                  {tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="inline-flex items-center px-4 py-2 rounded-full text-sm bg-gradient-to-r from-blue-500 to-purple-500 text-white"
+                    >
+                      #{tag}
+                      <button
+                        type="button"
+                        onClick={() => removeTag(tag)}
+                        className="ml-2 text-white/80 hover:text-white"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-3">
+                  <input
+                    type="text"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), addTag())}
+                    placeholder={journalTexts.tagPlaceholder}
+                    className={`flex-1 px-4 py-3 rounded-xl border text-sm ${
+                      theme === "dark"
+                        ? "bg-slate-700/50 border-slate-600 text-white placeholder-gray-400"
+                        : "bg-white/80 border-gray-300 text-gray-900 placeholder-gray-500"
+                    } focus:border-purple-400 outline-none`}
+                  />
+                  <button
+                    type="button"
+                    onClick={addTag}
+                    className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl hover:from-blue-600 hover:to-purple-600 transition-all font-semibold"
+                  >
+                    {journalTexts.addTag}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  id="private"
+                  checked={isPrivate}
+                  onChange={(e) => setIsPrivate(e.target.checked)}
+                  className="w-5 h-5 text-purple-600 rounded focus:ring-purple-500"
+                />
+                <label htmlFor="private" className="text-lg font-medium">
+                  🔒 {journalTexts.privateLabel}
+                </label>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-4 bg-gradient-to-r from-purple-500 via-pink-500 to-rose-500 text-white font-bold rounded-2xl hover:from-purple-600 hover:via-pink-600 hover:to-rose-600 transition-all transform hover:scale-105 text-lg shadow-lg"
+              >
+                ✨ {journalTexts.saveEntry}
+              </button>
+            </form>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 

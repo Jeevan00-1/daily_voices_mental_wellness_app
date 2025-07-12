@@ -217,3 +217,12 @@ export const getUserUpvotes = query({
     return upvotes;
   },
 });
+
+export const deletePost = mutation({
+  args: { postId: v.id("communityPosts") },
+  handler: async (ctx, args) => {
+    // No auth check: anyone can delete any post (temporary for admin functionality)
+    await ctx.db.delete(args.postId);
+    return { success: true };
+  },
+});

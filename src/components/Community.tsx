@@ -39,6 +39,7 @@ export function Community({ theme, language, texts }: CommunityProps) {
 
   const createPost = useMutation(api.community.createPost);
   const upvotePost = useMutation(api.community.upvotePost);
+  const deletePost = useMutation(api.community.deletePost);
 
   const { detectSafetyWords, triggerSafetyModal } = useSafetyDetection(language);
 
@@ -310,6 +311,14 @@ export function Community({ theme, language, texts }: CommunityProps) {
                     </p>
                   </div>
                 </div>
+                <button
+                  onClick={async () => {
+                    await deletePost({ postId: post._id });
+                  }}
+                  className="ml-4 px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs font-semibold"
+                >
+                  Delete
+                </button>
               </div>
               
               <p className="text-gray-700 dark:text-gray-300 mb-4 whitespace-pre-wrap">

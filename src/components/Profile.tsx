@@ -153,6 +153,40 @@ export function Profile({ theme, setTheme, profile, language, setLanguage, texts
     setIsEditing(false);
   };
 
+  // Helper to update theme in profile and local state
+  const handleThemeChange = async (newTheme: "light" | "dark") => {
+    setTheme(newTheme);
+    try {
+      await updateProfile({
+        username: username.trim(),
+        avatar: selectedAvatar,
+        theme: newTheme,
+        language,
+        background: selectedBackground,
+        fontSize: selectedFontSize,
+      });
+    } catch (error) {
+      toast.error(language === "en" ? "Failed to update theme" : "テーマの更新に失敗しました");
+    }
+  };
+
+  // Helper to update language in profile and local state
+  const handleLanguageChange = async (newLanguage: Language) => {
+    setLanguage(newLanguage);
+    try {
+      await updateProfile({
+        username: username.trim(),
+        avatar: selectedAvatar,
+        theme,
+        language: newLanguage,
+        background: selectedBackground,
+        fontSize: selectedFontSize,
+      });
+    } catch (error) {
+      toast.error(newLanguage === "en" ? "Failed to update language" : "言語の更新に失敗しました");
+    }
+  };
+
   const backgroundOptions = theme === "dark" ? DARK_BACKGROUNDS : BACKGROUND_COLORS;
 
   return (
@@ -272,7 +306,7 @@ export function Profile({ theme, setTheme, profile, language, setLanguage, texts
               </div>
               <div className="flex gap-3">
                 <button
-                  onClick={() => setTheme("light")}
+                  onClick={() => handleThemeChange("light")}
                   className={`px-6 py-3 rounded-2xl font-semibold transition-all ${
                     theme === "light"
                       ? "bg-gradient-to-r from-yellow-400 to-orange-400 text-white shadow-lg"
@@ -282,7 +316,7 @@ export function Profile({ theme, setTheme, profile, language, setLanguage, texts
                   ☀️ {profileTexts.light}
                 </button>
                 <button
-                  onClick={() => setTheme("dark")}
+                  onClick={() => handleThemeChange("dark")}
                   className={`px-6 py-3 rounded-2xl font-semibold transition-all ${
                     theme === "dark"
                       ? "bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-lg"
@@ -302,7 +336,7 @@ export function Profile({ theme, setTheme, profile, language, setLanguage, texts
               </div>
               <div className="flex gap-3">
                 <button
-                  onClick={() => setLanguage("en")}
+                  onClick={() => handleLanguageChange("en")}
                   className={`px-6 py-3 rounded-2xl font-semibold transition-all ${
                     language === "en"
                       ? "bg-gradient-to-r from-blue-500 to-teal-500 text-white shadow-lg"
@@ -312,7 +346,7 @@ export function Profile({ theme, setTheme, profile, language, setLanguage, texts
                   🇺🇸 {profileTexts.english}
                 </button>
                 <button
-                  onClick={() => setLanguage("ja")}
+                  onClick={() => handleLanguageChange("ja")}
                   className={`px-6 py-3 rounded-2xl font-semibold transition-all ${
                     language === "ja"
                       ? "bg-gradient-to-r from-red-500 to-pink-500 text-white shadow-lg"

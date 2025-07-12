@@ -62,6 +62,7 @@ export function ProfileSetup({ theme, setTheme, language, setLanguage, texts }: 
           </h2>
         </div>
         <div className="flex items-center space-x-2">
+          {/* These toggles update local state and UI immediately. The selected theme/language will be saved when the profile is created. */}
           <button onClick={() => setLanguage("en")} className={`px-3 py-1 rounded-lg text-sm ${language === "en" ? "bg-purple-500 text-white" : "text-gray-500"}`}>EN</button>
           <button onClick={() => setLanguage("ja")} className={`px-3 py-1 rounded-lg text-sm ${language === "ja" ? "bg-purple-500 text-white" : "text-gray-500"}`}>日本語</button>
           <button onClick={() => setTheme(theme === "light" ? "dark" : "light")} className="p-2 rounded-lg">{theme === "light" ? "🌙" : "☀️"}</button>

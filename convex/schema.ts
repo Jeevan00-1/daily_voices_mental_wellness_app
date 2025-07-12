@@ -107,6 +107,14 @@ const applicationTables = {
   })
     .index("by_post_and_user", ["postId", "userHash"])
     .index("by_comment_and_user", ["commentId", "userHash"]),
+
+  flaggedEntries: defineTable({
+    userId: v.id("users"),
+    entryId: v.string(),
+    timestamp: v.number(),
+    matchedKeywords: v.array(v.string()),
+    dismissed: v.boolean(),
+  }).index("by_user", ["userId"]),
 };
 
 export default defineSchema({
